@@ -1,81 +1,114 @@
-import React, { useEffect, useState } from "react";
-import axios from "axios";
-
-const API = " https://payslip-app-03gk.onrender.com"; // 👈 change after deploy
+import React, { useState } from "react";
 
 function App() {
-  const [form, setForm] = useState({
-    name: "",
-    empId: "",
-    salary: "",
-    workingDays: "",
-    advance: "",
-    deduction: "",
-    includePFESI: true
-  });
+  const [name, setName] = useState("");
+  const [empId, setEmpId] = useState("");
+  const [basic, setBasic] = useState("");
+  const [days, setDays] = useState("");
+  const [allowance, setAllowance] = useState("");
+  const [deduction, setDeduction] = useState("");
+  const [includePF, setIncludePF] = useState(false);
+  const [result, setResult] = useState(null);
 
-  const [employees, setEmployees] = useState([]);
+  const handleAdd = (e) => {
+    e.preventDefault(); // 🔴 prevents page refresh
 
-  const fetchEmployees = async () => {
-    const res = await axios.get(`${API}/employees`);
-    setEmployees(res.data);
-  };
+    const basicNum = Number(basic);
+    const allowanceNum = Number(allowance);
+    const deductionNum = Number(deduction);
 
-  useEffect(() => {
-    fetchEmployees();
-  }, []);
+    let pf = 0;
+    let esi = 0;
 
-  const handleChange = (e) => {
-    const { name, value, type, checked } = e.target;
-    setForm({ ...form, [name]: type === "checkbox" ? checked : value });
-  };
+    if (includePF) {
+      pf = basicNum * 0.12;
+      esi = basicNum * 0.0175;
+    }
 
-  const handleSubmit = async () => {
-    await axios.post(`${API}/employee`, form);
-    fetchEmployees();
-  };
+    const gross = basicNum + allowanceNum;
+    const totalDeduction = deductionNum + pf + esi;
+    const net = gross - totalDeduction;
 
-  const calculate = (emp) => {
-    const salary = Number(emp.salary || 0);
-    const basic = salary * 0.4;
-    const hra = salary - basic;
-
-    const pf = emp.includePFESI ? basic * 0.12 : 0;
-    const esi = emp.includePFESI ? salary * 0.0075 : 0;
-
-    const total = pf + esi + Number(emp.advance || 0) + Number(emp.deduction || 0);
-    const net = salary - total;
-
-    return { basic, hra, pf, esi, net };
+    setResult({
+      gross,
+      pf,
+      esi,
+      totalDeduction,
+      net,
+    });
   };
 
   return (
-    <div style={{ maxWidth: "600px", margin: "auto" }}>
-      <h2>Payslip Generator</h2>
+    <div style={{ padding: "20px" }}>
+      <h1>Payslip Generator</h1>
 
-      <input name="name" placeholder="Name" onChange={handleChange} />
-      <input name="empId" placeholder="ID" onChange={handleChange} />
-      <input name="salary" placeholder="Salary" onChange={handleChange} />
-      <input name="workingDays" placeholder="Working Days" onChange={handleChange} />
-      <input name="advance" placeholder="Advance" onChange={handleChange} />
-      <input name="deduction" placeholder="Deduction" onChange={handleChange} />
+      <form onSubmit={handleAdd}>
+        <input
+          placeholder="Employee Name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        /><br /><br />
 
-      <label>
-        <input type="checkbox" name="includePFESI" onChange={handleChange} />
-        Include PF & ESI
-      </label>
+        <input
+          placeholder="Employee ID"
+          value={empId}
+          onChange={(e) => setEmpId(e.target.value)}
+        /><br /><br />
 
-      <button onClick={handleSubmit}>Add</button>
+        <input
+          placeholder="Basic Salary"
+          type="number"
+          value={basic}
+          onChange={(e) => setBasic(e.target.value)}
+        /><br /><br />
 
-      {employees.map((emp, i) => {
-        const c = calculate(emp);
-        return (
-          <div key={i} style={{ border: "1px solid black", marginTop: 20 }}>
-            <h3>{emp.name}</h3>
-            <p>Net Pay: ₹{c.net.toFixed(2)}</p>
-          </div>
-        );
-      })}
+        <input
+          placeholder="Working Days"
+          type="number"
+          value={days}
+          onChange={(e) => setDays(e.target.value)}
+        /><br /><br />
+
+        <input
+          placeholder="Allowance"
+          type="number"
+          value={allowance}
+          onChange={(e) => setAllowance(e.target.value)}
+        /><br /><br />
+
+        <input
+          placeholder="Other Deductions"
+          type="number"
+          value={deduction}
+          onChange={(e) => setDeduction(e.target.value)}
+        /><br /><br />
+
+        <label>
+          <input
+            type="checkbox"
+            checked={includePF}
+            onChange={(e) => setIncludePF(e.target.checked)}
+          />
+          Include PF & ESI
+        </label>
+
+        <br /><br />
+
+        <button type="submit">Add</button>
+      </form>
+
+      {result && (
+        <div style={{ marginTop: "20px" }}>
+          <h2>Payslip</h2>
+          <p><strong>Name:</strong> {name}</p>
+          <p><strong>Employee ID:</strong> {empId}</p>
+          <p><strong>Gross Salary:</strong> {result.gross}</p>
+          <p><strong>PF:</strong> {result.pf}</p>
+          <p><strong>ESI:</strong> {result.esi}</p>
+          <p><strong>Total Deduction:</strong> {result.totalDeduction}</p>
+          <h3><strong>Net Salary: {result.net}</strong></h3>
+        </div>
+      )}
     </div>
   );
 }
