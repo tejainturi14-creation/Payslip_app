@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 
-const API = "https://YOUR-BACKEND-URL"; // 👈 change after deploy
+const API = " https://payslip-app-03gk.onrender.com"; // 👈 change after deploy
 
 function App() {
   const [form, setForm] = useState({
