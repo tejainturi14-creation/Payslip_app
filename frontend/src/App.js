@@ -1,112 +1,195 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
+import jsPDF from "jspdf";
+import html2canvas from "html2canvas";
 
 function App() {
-  const [name, setName] = useState("");
-  const [empId, setEmpId] = useState("");
-  const [basic, setBasic] = useState("");
-  const [days, setDays] = useState("");
-  const [allowance, setAllowance] = useState("");
-  const [deduction, setDeduction] = useState("");
-  const [includePF, setIncludePF] = useState(false);
+  const [form, setForm] = useState({
+    name: "",
+    empId: "",
+    salary: "",
+    days: "",
+    deduction: "",
+    salaryMonth: "",
+    includePF: false,
+  });
+
   const [result, setResult] = useState(null);
+  const payslipRef = useRef();
 
-  const handleAdd = (e) => {
-    e.preventDefault(); // 🔴 prevents page refresh
-
-    const basicNum = Number(basic);
-    const allowanceNum = Number(allowance);
-    const deductionNum = Number(deduction);
-
-    let pf = 0;
-    let esi = 0;
-
-    if (includePF) {
-      pf = basicNum * 0.12;
-      esi = basicNum * 0.0175;
-    }
-
-    const gross = basicNum + allowanceNum;
-    const totalDeduction = deductionNum + pf + esi;
-    const net = gross - totalDeduction;
-
-    setResult({
-      gross,
-      pf,
-      esi,
-      totalDeduction,
-      net,
+  const handleChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    setForm({
+      ...form,
+      [name]: type === "checkbox" ? checked : value,
     });
   };
 
+  const handleGenerate = (e) => {
+    e.preventDefault();
+
+    const salary = Number(form.salary);
+    const deduction = Number(form.deduction);
+
+    const basic = salary * 0.4;
+    const hra = salary * 0.6;
+
+    let pfEmp = 0;
+    let esiEmp = 0;
+    let pfEmployer = 0;
+    let esiEmployer = 0;
+
+    if (form.includePF) {
+      pfEmp = basic * 0.12;
+      esiEmp = salary * 0.0075;
+      pfEmployer = basic * 0.12;
+      esiEmployer = salary * 0.0325;
+    }
+
+    const totalDeduction = deduction + pfEmp + esiEmp;
+    const net = salary - totalDeduction;
+
+    const round = (num) => Math.round(num * 100) / 100;
+
+    setResult({
+      basic: round(basic),
+      hra: round(hra),
+      pfEmp: round(pfEmp),
+      esiEmp: round(esiEmp),
+      pfEmployer: round(pfEmployer),
+      esiEmployer: round(esiEmployer),
+      totalDeduction: round(totalDeduction),
+      net: round(net),
+    });
+  };
+
+  const downloadPDF = async () => {
+    const canvas = await html2canvas(payslipRef.current, { scale: 2 });
+    const imgData = canvas.toDataURL("image/png");
+
+    const pdf = new jsPDF("p", "mm", "a4");
+    const imgProps = pdf.getImageProperties(imgData);
+    const pdfWidth = pdf.internal.pageSize.getWidth();
+    const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+
+    pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
+    pdf.save("payslip.pdf");
+  };
+
   return (
-    <div style={{ padding: "20px" }}>
-      <h1>Payslip Generator</h1>
+    <div style={{ padding: "20px", fontFamily: "Arial" }}>
+      
+      {/* COMPANY HEADER ON FORM PAGE */}
+      <div style={{ textAlign: "center", marginBottom: "30px" }}>
+        <h2 style={{ color: "#1E90FF", fontWeight: "bold" }}>
+          SRI VENKATESWARA SECURITY AGENCIES
+        </h2>
+      </div>
 
-      <form onSubmit={handleAdd}>
-        <input
-          placeholder="Employee Name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-        /><br /><br />
-
-        <input
-          placeholder="Employee ID"
-          value={empId}
-          onChange={(e) => setEmpId(e.target.value)}
-        /><br /><br />
-
-        <input
-          placeholder="Basic Salary"
-          type="number"
-          value={basic}
-          onChange={(e) => setBasic(e.target.value)}
-        /><br /><br />
-
-        <input
-          placeholder="Working Days"
-          type="number"
-          value={days}
-          onChange={(e) => setDays(e.target.value)}
-        /><br /><br />
-
-        <input
-          placeholder="Allowance"
-          type="number"
-          value={allowance}
-          onChange={(e) => setAllowance(e.target.value)}
-        /><br /><br />
-
-        <input
-          placeholder="Other Deductions"
-          type="number"
-          value={deduction}
-          onChange={(e) => setDeduction(e.target.value)}
-        /><br /><br />
+      {/* FORM */}
+      <form onSubmit={handleGenerate} style={{ maxWidth: "500px", margin: "auto" }}>
+        {[
+          ["name", "Employee Name", "text"],
+          ["empId", "Employee ID", "text"],
+          ["salary", "Salary", "number"],
+          ["days", "Working Days", "number"],
+          ["deduction", "Deduction", "number"],
+          ["salaryMonth", "Salary Month", "text"],
+        ].map(([key, label, type]) => (
+          <div key={key} style={{ display: "flex", marginBottom: "10px" }}>
+            <label style={{ width: "150px", fontWeight: "bold" }}>{label}:</label>
+            <input
+              name={key}
+              type={type}
+              value={form[key]}
+              onChange={handleChange}
+              style={{ flex: 1, padding: "5px" }}
+            />
+          </div>
+        ))}
 
         <label>
           <input
             type="checkbox"
-            checked={includePF}
-            onChange={(e) => setIncludePF(e.target.checked)}
+            name="includePF"
+            checked={form.includePF}
+            onChange={handleChange}
           />
           Include PF & ESI
         </label>
 
         <br /><br />
 
-        <button type="submit">Add</button>
+        <button type="submit">Generate</button>
       </form>
 
+      {/* PAYSLIP */}
       {result && (
-        <div style={{ marginTop: "20px" }}>
-          <h2>Payslip</h2>
-          <p><strong>Name:</strong> {name}</p>
-          <p><strong>Employee ID:</strong> {empId}</p>
-          <p><strong>Gross Salary:</strong> {result.gross}</p>
-          <p><strong>PF:</strong> {result.pf}</p>
-          <p><strong>ESI:</strong> {result.esi}</p>
-          <p><strong>Total Deduction:</strong> {result.totalDeduction}</p>
-          <h3><strong>Net Salary: {result.net}</strong></h3>
+        <div style={{ marginTop: "30px", textAlign: "center" }}>
+          <div
+            ref={payslipRef}
+            style={{
+              padding: "20px",
+              border: "2px solid black",
+              maxWidth: "100%",
+              overflowX: "auto", // scroll if needed
+            }}
+          >
+            {/* COMPANY HEADER */}
+            <h2 style={{ color: "#1E90FF", fontWeight: "bold", marginBottom: "20px" }}>
+              SRI VENKATESWARA SECURITY AGENCIES
+            </h2>
+
+            {/* SALARY MONTH */}
+            <p style={{ fontWeight: "bold", marginBottom: "10px" }}>
+              Salary Month: {form.salaryMonth || "__________"}
+            </p>
+
+            {/* TABLE */}
+            <table
+              border="1"
+              width="100%"
+              cellPadding="5"
+              style={{ borderCollapse: "collapse", tableLayout: "fixed", fontSize: "14px" }}
+            >
+              <thead>
+                <tr>
+                  <th style={{ fontWeight: "bold" }}>EMP NAME</th>
+                  <th style={{ fontWeight: "bold" }}>ID</th>
+                  <th style={{ fontWeight: "bold" }}>SALARY</th>
+                  <th style={{ fontWeight: "bold" }}>DAYS</th>
+                  <th style={{ fontWeight: "bold" }}>BASIC</th>
+                  <th style={{ fontWeight: "bold" }}>HRA</th>
+                  <th style={{ fontWeight: "bold" }}>PF EMP</th>
+                  <th style={{ fontWeight: "bold" }}>ESI EMP</th>
+                  <th style={{ fontWeight: "bold" }}>PF EMPLOYER</th>
+                  <th style={{ fontWeight: "bold" }}>ESI EMPLOYER</th>
+                  <th style={{ fontWeight: "bold" }}>DEDUCTION</th>
+                  <th style={{ fontWeight: "bold" }}>NET</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                <tr>
+                  <td style={{ fontWeight: "bold", wordWrap: "break-word" }}>{form.name}</td>
+                  <td>{form.empId}</td>
+                  <td>{form.salary}</td>
+                  <td>{form.days}</td>
+                  <td>{result.basic}</td>
+                  <td>{result.hra}</td>
+                  <td>{result.pfEmp}</td>
+                  <td>{result.esiEmp}</td>
+                  <td>{result.pfEmployer}</td>
+                  <td>{result.esiEmployer}</td>
+                  <td>{form.deduction}</td>
+                  <td>{result.net}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <br />
+
+          <button onClick={downloadPDF}>Download PDF</button>
         </div>
       )}
     </div>
