@@ -15,14 +15,15 @@ mongoose.connect(MONGO_URI)
   .catch(err => console.log(err));
 
 const EmployeeSchema = new mongoose.Schema({
-  name: String,
-  empId: String,
-  salary: Number,
-  workingDays: Number,
-  advance: Number,
-  deduction: Number,
-  includePFESI: Boolean
-});
+    name: String,
+    empId: String,
+    salary: Number,
+    workingDays: Number,
+    advance: Number,
+    deduction: Number,
+    salaryMonth: String,
+    includePFESI: Boolean
+  });
 
 const Employee = mongoose.model("Employee", EmployeeSchema);
 
