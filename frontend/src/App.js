@@ -1,196 +1,264 @@
-import React, { useState, useRef } from "react";
+import React, { useState } from "react";
+import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
+import logo from "./logo.png";
 
 function App() {
-  const [form, setForm] = useState({
-    name: "",
-    empId: "",
-    salary: "",
-    days: "",
-    deduction: "",
-    salaryMonth: "",
-    includePF: false,
-  });
+  const [employees, setEmployees] = useState([]);
 
-  const [result, setResult] = useState(null);
-  const payslipRef = useRef();
+  // 📥 Excel Upload
+  const handleFileUpload = (e) => {
+    const file = e.target.files[0];
+    const reader = new FileReader();
 
-  const handleChange = (e) => {
-    const { name, value, type, checked } = e.target;
-    setForm({
-      ...form,
-      [name]: type === "checkbox" ? checked : value,
-    });
+    reader.readAsBinaryString(file);
+
+    reader.onload = (evt) => {
+      const workbook = XLSX.read(evt.target.result, { type: "binary" });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const data = XLSX.utils.sheet_to_json(sheet);
+
+      const formatted = data
+        .map((row) => ({
+          name: row["Name"] || "",
+          empId: row["EmpId"] || "",
+          salary: Number(row["Salary"] || 0),
+          days: Number(row["Days"] || 0),
+          advance: Number(row["Advance"] || 0),
+          deduction: Number(row["Deduction"] || 0),
+          salaryMonth: row["Salary Month"] || "",
+          includePFESI:
+            (row["Include PF ESI"] || "")
+              .toString()
+              .toLowerCase() === "yes",
+        }))
+        .filter((emp) => emp.name !== "");
+
+      setEmployees(formatted);
+    };
   };
 
-  const handleGenerate = (e) => {
-    e.preventDefault();
+  // 💰 Currency format
+  const formatCurrency = (num) =>
+    `₹ ${Number(num).toLocaleString("en-IN")}`;
 
-    const salary = Number(form.salary);
-    const deduction = Number(form.deduction);
+  // 🧮 Calculation
+  const calculate = (emp) => {
+    const basic = emp.salary * 0.4;
+    const hra = emp.salary * 0.6;
 
-    const basic = salary * 0.4;
-    const hra = salary * 0.6;
+    let pfEmp = 0,
+      esiEmp = 0,
+      pfEmployer = 0,
+      esiEmployer = 0;
 
-    let pfEmp = 0;
-    let esiEmp = 0;
-    let pfEmployer = 0;
-    let esiEmployer = 0;
-
-    if (form.includePF) {
+    if (emp.includePFESI) {
       pfEmp = basic * 0.12;
-      esiEmp = salary * 0.0075;
+      esiEmp = emp.salary * 0.0075;
       pfEmployer = basic * 0.12;
-      esiEmployer = salary * 0.0325;
+      esiEmployer = emp.salary * 0.0325;
     }
 
-    const totalDeduction = deduction + pfEmp + esiEmp;
-    const net = salary - totalDeduction;
+    const gross = emp.salary;
+    const totalDeduction = emp.deduction + emp.advance + pfEmp + esiEmp;
+    const net = gross - totalDeduction;
 
-    const round = (num) => Math.round(num * 100) / 100;
+    const round = (n) => Math.round(n * 100) / 100;
 
-    setResult({
+    return {
       basic: round(basic),
       hra: round(hra),
       pfEmp: round(pfEmp),
       esiEmp: round(esiEmp),
       pfEmployer: round(pfEmployer),
       esiEmployer: round(esiEmployer),
+      gross: round(gross),
       totalDeduction: round(totalDeduction),
       net: round(net),
-    });
+    };
   };
 
-  const downloadPDF = async () => {
-    const canvas = await html2canvas(payslipRef.current, { scale: 2 });
-    const imgData = canvas.toDataURL("image/png");
+  // 📄 Generate PDFs
+  const generateAllPDFs = async () => {
+    for (let emp of employees) {
+      const result = calculate(emp);
 
-    const pdf = new jsPDF("p", "mm", "a4");
-    const imgProps = pdf.getImageProperties(imgData);
-    const pdfWidth = pdf.internal.pageSize.getWidth();
-    const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+      const div = document.createElement("div");
 
-    pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
-    pdf.save("payslip.pdf");
+      div.innerHTML = `
+      <div style="padding:30px; font-family:Arial; width:700px; margin:auto;">
+
+        <!-- HEADER -->
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+          <img src="${logo}" width="70"/>
+          <div style="text-align:right;">
+            <h2 style="margin:0;">SRI VENKATESWARA SECURITY AGENCIES</h2>
+            <p style="margin:5px 0;">Salary Month: ${emp.salaryMonth}</p>
+          </div>
+        </div>
+
+        <hr/>
+
+        <!-- EMPLOYEE DETAILS -->
+        <table width="100%" style="margin:10px 0;">
+          <tr>
+            <td><b>Employee Name:</b> ${emp.name}</td>
+            <td><b>Employee ID:</b> ${emp.empId}</td>
+          </tr>
+          <tr>
+            <td><b>Working Days:</b> ${emp.days}</td>
+            <td><b>Gross Salary:</b> ${formatCurrency(emp.salary)}</td>
+          </tr>
+        </table>
+
+        <!-- EARNINGS / DEDUCTIONS -->
+        <table border="1" width="100%" cellpadding="8" style="border-collapse:collapse;">
+          <thead>
+            <tr style="background:#f2f2f2;">
+              <th>Earnings</th>
+              <th>Amount</th>
+              <th>Deductions</th>
+              <th>Amount</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            <tr>
+              <td>Basic</td>
+              <td>${formatCurrency(result.basic)}</td>
+              <td>PF (Employee)</td>
+              <td>${formatCurrency(result.pfEmp)}</td>
+            </tr>
+
+            <tr>
+              <td>HRA</td>
+              <td>${formatCurrency(result.hra)}</td>
+              <td>ESI (Employee)</td>
+              <td>${formatCurrency(result.esiEmp)}</td>
+            </tr>
+
+            <tr>
+              <td></td>
+              <td></td>
+              <td>Advance</td>
+              <td>${formatCurrency(emp.advance)}</td>
+            </tr>
+
+            <tr>
+              <td></td>
+              <td></td>
+              <td>Other Deduction</td>
+              <td>${formatCurrency(emp.deduction)}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <br/>
+
+        <!-- SUMMARY -->
+        <table border="1" width="100%" cellpadding="10" style="border-collapse:collapse;">
+          <tr>
+            <td><b>Total Earnings</b></td>
+            <td><b>${formatCurrency(result.gross)}</b></td>
+          </tr>
+          <tr>
+            <td><b>Total Deductions</b></td>
+            <td><b>${formatCurrency(result.totalDeduction)}</b></td>
+          </tr>
+          <tr style="background:#d4f8d4;">
+            <td><b>Net Pay</b></td>
+            <td><b>${formatCurrency(result.net)}</b></td>
+          </tr>
+        </table>
+
+        <br/>
+
+        <!-- EMPLOYER CONTRIBUTION -->
+        <p><b>PF (Employer):</b> ${formatCurrency(result.pfEmployer)}</p>
+        <p><b>ESI (Employer):</b> ${formatCurrency(result.esiEmployer)}</p>
+
+        <br/><br/>
+
+        <!-- FOOTER -->
+        <p style="text-align:center; font-size:12px; color:gray;">
+          This is a system-generated payslip and does not require a physical signature.
+        </p>
+
+      </div>
+      `;
+
+      document.body.appendChild(div);
+
+      const canvas = await html2canvas(div, { scale: 2 });
+      const imgData = canvas.toDataURL("image/png");
+
+      const pdf = new jsPDF("p", "mm", "a4");
+
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const imgWidth = pdfWidth * 0.9;
+
+      const imgHeight =
+        (canvas.height * imgWidth) / canvas.width;
+
+      const x = (pdfWidth - imgWidth) / 2;
+      const y = 10;
+
+      pdf.addImage(imgData, "PNG", x, y, imgWidth, imgHeight);
+
+      // 🔥 FILE NAME FIX
+      const safeMonth = (emp.salaryMonth || "month")
+        .replace(/\s+/g, "_");
+
+      const safeName = (emp.name || "employee")
+        .replace(/\s+/g, "_");
+
+      pdf.save(`${safeName}_${safeMonth}_payslip.pdf`);
+
+      document.body.removeChild(div);
+    }
   };
 
   return (
-    <div style={{ padding: "20px", fontFamily: "Arial" }}>
-      
-      {/* COMPANY HEADER ON FORM PAGE */}
-      <div style={{ textAlign: "center", marginBottom: "30px" }}>
-        <h2 style={{ color: "#1E90FF", fontWeight: "bold" }}>
-          SRI VENKATESWARA SECURITY AGENCIES
-        </h2>
-      </div>
+    <div style={{ padding: "20px" }}>
+      <h2>Upload Excel File</h2>
 
-      {/* FORM */}
-      <form onSubmit={handleGenerate} style={{ maxWidth: "500px", margin: "auto" }}>
-        {[
-          ["name", "Employee Name", "text"],
-          ["empId", "Employee ID", "text"],
-          ["salary", "Salary", "number"],
-          ["days", "Working Days", "number"],
-          ["deduction", "Deduction", "number"],
-          ["salaryMonth", "Salary Month", "text"],
-        ].map(([key, label, type]) => (
-          <div key={key} style={{ display: "flex", marginBottom: "10px" }}>
-            <label style={{ width: "150px", fontWeight: "bold" }}>{label}:</label>
-            <input
-              name={key}
-              type={type}
-              value={form[key]}
-              onChange={handleChange}
-              style={{ flex: 1, padding: "5px" }}
-            />
-          </div>
-        ))}
+      <input type="file" onChange={handleFileUpload} />
 
-        <label>
-          <input
-            type="checkbox"
-            name="includePF"
-            checked={form.includePF}
-            onChange={handleChange}
-          />
-          Include PF & ESI
-        </label>
+      <br /><br />
 
-        <br /><br />
+      <button onClick={generateAllPDFs}>
+        Generate All Payslips
+      </button>
 
-        <button type="submit">Generate</button>
-      </form>
+      <br /><br />
 
-      {/* PAYSLIP */}
-      {result && (
-        <div style={{ marginTop: "30px", textAlign: "center" }}>
-          <div
-            ref={payslipRef}
-            style={{
-              padding: "20px",
-              border: "2px solid black",
-              maxWidth: "100%",
-              overflowX: "auto", // scroll if needed
-            }}
-          >
-            {/* COMPANY HEADER */}
-            <h2 style={{ color: "#1E90FF", fontWeight: "bold", marginBottom: "20px" }}>
-              SRI VENKATESWARA SECURITY AGENCIES
-            </h2>
-
-            {/* SALARY MONTH */}
-            <p style={{ fontWeight: "bold", marginBottom: "10px" }}>
-              Salary Month: {form.salaryMonth || "__________"}
-            </p>
-
-            {/* TABLE */}
-            <table
-              border="1"
-              width="100%"
-              cellPadding="5"
-              style={{ borderCollapse: "collapse", tableLayout: "fixed", fontSize: "14px" }}
-            >
-              <thead>
-                <tr>
-                  <th style={{ fontWeight: "bold" }}>EMP NAME</th>
-                  <th style={{ fontWeight: "bold" }}>ID</th>
-                  <th style={{ fontWeight: "bold" }}>SALARY</th>
-                  <th style={{ fontWeight: "bold" }}>DAYS</th>
-                  <th style={{ fontWeight: "bold" }}>BASIC</th>
-                  <th style={{ fontWeight: "bold" }}>HRA</th>
-                  <th style={{ fontWeight: "bold" }}>PF EMP</th>
-                  <th style={{ fontWeight: "bold" }}>ESI EMP</th>
-                  <th style={{ fontWeight: "bold" }}>PF EMPLOYER</th>
-                  <th style={{ fontWeight: "bold" }}>ESI EMPLOYER</th>
-                  <th style={{ fontWeight: "bold" }}>DEDUCTION</th>
-                  <th style={{ fontWeight: "bold" }}>NET</th>
+      {employees.length > 0 && (
+        <table border="1" width="100%">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>ID</th>
+              <th>Salary</th>
+              <th>Advance</th>
+              <th>Net</th>
+            </tr>
+          </thead>
+          <tbody>
+            {employees.map((emp, i) => {
+              const res = calculate(emp);
+              return (
+                <tr key={i}>
+                  <td>{emp.name}</td>
+                  <td>{emp.empId}</td>
+                  <td>{formatCurrency(emp.salary)}</td>
+                  <td>{formatCurrency(emp.advance)}</td>
+                  <td>{formatCurrency(res.net)}</td>
                 </tr>
-              </thead>
-
-              <tbody>
-                <tr>
-                  <td style={{ fontWeight: "bold", wordWrap: "break-word" }}>{form.name}</td>
-                  <td>{form.empId}</td>
-                  <td>{form.salary}</td>
-                  <td>{form.days}</td>
-                  <td>{result.basic}</td>
-                  <td>{result.hra}</td>
-                  <td>{result.pfEmp}</td>
-                  <td>{result.esiEmp}</td>
-                  <td>{result.pfEmployer}</td>
-                  <td>{result.esiEmployer}</td>
-                  <td>{form.deduction}</td>
-                  <td>{result.net}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <br />
-
-          <button onClick={downloadPDF}>Download PDF</button>
-        </div>
+              );
+            })}
+          </tbody>
+        </table>
       )}
     </div>
   );
